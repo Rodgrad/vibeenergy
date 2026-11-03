@@ -1,0 +1,123 @@
+#!/bin/sh
+set -eu
+APPDIR=${APPDIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
+export APPDIR
+export VIBEENERGY_HOST_PATH="$PATH"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib/x86_64-linux-gnu"
+unset QT_QPA_PLATFORM_PLUGIN_PATH
+export QT_PLUGIN_PATH="$APPDIR/usr/lib/x86_64-linux-gnu/qt6/plugins"
+export QML_IMPORT_PATH="$APPDIR/usr/lib/x86_64-linux-gnu/qt6/qml"
+export QML2_IMPORT_PATH="$QML_IMPORT_PATH"
+export XDG_DATA_DIRS="$APPDIR/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export FONTCONFIG_PATH="$APPDIR/usr/etc/fonts"
+export FONTCONFIG_FILE="$APPDIR/usr/etc/fonts/fonts.conf"
+export PYTHONHOME="$APPDIR/usr"
+export PYTHONPATH="$APPDIR/app"
+export PYTHONDONTWRITEBYTECODE=1
+export PATH="$APPDIR/usr/bin:$PATH"
+export QT_QUICK_CONTROLS_STYLE=org.kde.desktop
+# AppImage mount URLs change between launches; do not reuse compiled QML URLs.
+export QML_DISABLE_DISK_CACHE=1
+launch_window() {
+    unset VIBEENERGY_INSTANCE_OWNER
+    export LD_PRELOAD="$APPDIR/usr/lib/x86_64-linux-gnu/libenergytlk-window-alpha.so${LD_PRELOAD:+:$LD_PRELOAD}"
+    exec "$APPDIR/usr/bin/plasmawindowed" -qwindowicon "$APPDIR/vibeenergy.svg" "$APPDIR/usr/share/plasma/plasmoids/org.energytlk.monitor" "$@"
+}
+if [ "${1:-}" = "--clear-history" ]; then
+    exec "$APPDIR/usr/bin/python3" -m energytlk.clear_history
+fi
+if [ "${1:-}" = "--stop-collector" ]; then
+    exec "$APPDIR/usr/bin/python3" -m energytlk.control
+fi
+if [ "${1:-}" = "--collector" ]; then
+    shift
+    exec "$APPDIR/usr/bin/python3" -m energytlk "$@"
+fi
+if [ "${VIBEENERGY_INSTANCE_OWNER:-}" != "1" ]; then
+    exec "$APPDIR/usr/bin/energytlk-instance" "$APPDIR/AppRun" "$@"
+fi
+if [ "${1:-}" = "--window-only" ]; then
+    shift
+    launch_window "$@"
+fi
+splash_dir=$(mktemp -d "${TMPDIR:-/tmp}/vibeenergy-splash.XXXXXX")
+export VIBEENERGY_SPLASH_READY="$splash_dir/ready"
+export VIBEENERGY_SPLASH_SHOWN="$splash_dir/shown"
+export VIBEENERGY_SPLASH_CLOSED="$splash_dir/closed"
+"$APPDIR/usr/bin/energytlk-splash" "$APPDIR/usr/share/plasma/plasmoids/org.energytlk.monitor/contents/ui/StartupSplash.qml" &
+splash_pid=$!
+window_pid=
+watcher_pid=
+cleanup_startup() {
+    if [ -n "$window_pid" ]; then
+        kill "$window_pid" 2>/dev/null || :
+        wait "$window_pid" 2>/dev/null || :
+    fi
+    if [ -n "$watcher_pid" ]; then
+        kill "$watcher_pid" 2>/dev/null || :
+        wait "$watcher_pid" 2>/dev/null || :
+    fi
+    if [ -n "$splash_pid" ]; then
+        kill "$splash_pid" 2>/dev/null || :
+        wait "$splash_pid" 2>/dev/null || :
+    fi
+    rm -rf -- "$splash_dir"
+    # A killed mount/launcher must not leave the independent collector behind.
+    collector_image=${APPIMAGE:-}
+    if [ -n "$collector_image" ] && [ -x "$collector_image" ]; then
+        (
+            unset APPDIR APPIMAGE LD_LIBRARY_PATH LD_PRELOAD PYTHONHOME PYTHONPATH QT_PLUGIN_PATH QML_IMPORT_PATH QML2_IMPORT_PATH
+            "$collector_image" --appimage-extract-and-run --stop-collector
+        ) || :
+    fi
+}
+interrupt_startup() {
+    if [ -n "$window_pid" ]; then kill "$window_pid" 2>/dev/null || :; fi
+    exit "$1"
+}
+trap cleanup_startup EXIT
+trap 'interrupt_startup 130' INT
+trap 'interrupt_startup 143' TERM
+# Let the compositor present the splash before starting the dashboard.
+# A crashed/unsupported splash must never prevent the application from opening.
+splash_wait=0
+while [ ! -f "$VIBEENERGY_SPLASH_SHOWN" ] && kill -0 "$splash_pid" 2>/dev/null && [ "$splash_wait" -lt 150 ]; do
+    sleep 0.02
+    splash_wait=$((splash_wait + 1))
+done
+"$APPDIR/usr/bin/python3" "$APPDIR/app/prepare.py"
+launch_window "$@" &
+window_pid=$!
+# Plasma may forward this launch to an existing instance and exit without
+# creating a new dashboard. That process will never send our ready marker.
+# Watch only our own children, for the duration of this startup.
+(
+    splash_ticks=0
+    while kill -0 "$splash_pid" 2>/dev/null && kill -0 "$window_pid" 2>/dev/null && [ "$splash_ticks" -lt 300 ]; do
+        # Backstop the splash's own Qt timer if its UI/audio thread is blocked.
+        if [ -f "$VIBEENERGY_SPLASH_READY" ] && [ "$splash_ticks" -ge 40 ]; then break; fi
+        sleep 0.05
+        splash_ticks=$((splash_ticks + 1))
+    done
+    if ! kill -0 "$window_pid" 2>/dev/null || [ "$splash_ticks" -ge 300 ] ||
+       { [ -f "$VIBEENERGY_SPLASH_READY" ] && [ "$splash_ticks" -ge 40 ]; }; then
+        : > "$splash_dir/supervised-close"
+        kill "$splash_pid" 2>/dev/null || :
+    fi
+) &
+watcher_pid=$!
+# Acknowledge only after the splash process (including its audio) has exited.
+splash_result=0
+wait "$splash_pid" || splash_result=$?
+if [ "$splash_result" -ge 128 ] && [ ! -f "$splash_dir/supervised-close" ]; then
+    interrupt_startup "$splash_result"
+fi
+splash_pid=
+kill "$watcher_pid" 2>/dev/null || :
+wait "$watcher_pid" 2>/dev/null || :
+watcher_pid=
+: > "$VIBEENERGY_SPLASH_CLOSED"
+result=0
+wait "$window_pid" || result=$?
+window_pid=
+exit "$result"

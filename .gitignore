@@ -1,0 +1,44 @@
+build/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local AI conversations, prompts, and chat exports
+/.codex/
+/codex_plasma_energy_widget_prompt.md
+chat-logs/
+chat_logs/
+chatlogs/
+transcripts/
+/chat*.md
+/chat*.txt
+/chat*.json
+/chat*.jsonl
+/conversation*.md
+/conversation*.txt
+/conversation*.json
+/conversation*.jsonl
+/transcript*.md
+/transcript*.txt
+/transcript*.json
+/transcript*.jsonl
+
+
+
+# Generated website download artifacts
+/website/downloads/
+
+# Local build helpers
+/builders/
+
+# Local website files
+/website/
+
+# Local website capture helper
+/scripts/capture_website.py
+
+# Local validation report
+/VALIDATION.md
+
+# Generated release artifacts and build staging
+/release/

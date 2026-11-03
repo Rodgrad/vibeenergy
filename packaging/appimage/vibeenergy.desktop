@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=VibeEnergy
+Comment=CPU and GPU energy and electricity cost monitor
+Exec=AppRun
+Icon=vibeenergy
+Terminal=false
+Categories=System;Monitor;
+StartupWMClass=vibeenergy
+StartupNotify=true

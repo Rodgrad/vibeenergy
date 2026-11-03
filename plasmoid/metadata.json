@@ -1,0 +1,23 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Id": "org.energytlk.monitor",
+    "Name": "vibeenergy",
+    "Description": "Local CPU/GPU energy, coverage and tariff estimates",
+    "Icon": "vibeenergy",
+    "Version": "1.0.0",
+    "License": "MIT",
+    "Authors": [
+      {
+        "Name": "Luka Beslic",
+        "Website": "https://github.com/Rodgrad"
+      },
+      {
+        "Name": "GPT-6.1"
+      }
+    ],
+    "Category": "System Information",
+    "Website": "https://github.com/Rodgrad/vibeenergy"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0"
+}
