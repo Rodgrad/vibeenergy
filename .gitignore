@@ -37,8 +37,5 @@ transcripts/
 # Local website capture helper
 /scripts/capture_website.py
 
-# Local validation report
-/VALIDATION.md
-
 # Generated release artifacts and build staging
 /release/
