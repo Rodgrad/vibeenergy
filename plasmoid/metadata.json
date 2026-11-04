@@ -5,8 +5,8 @@
     "Name": "vibeenergy",
     "Description": "Local CPU/GPU energy, coverage and tariff estimates",
     "Icon": "vibeenergy",
-    "Version": "1.0.0",
-    "License": "MIT",
+    "Version": "1.0.1",
+    "License": "GPL-3.0-only",
     "Authors": [
       {
         "Name": "Luka Beslic",

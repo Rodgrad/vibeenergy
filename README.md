@@ -8,6 +8,10 @@ A standalone KDE desktop app, optional Plasma 6 widget, and independent unprivil
 
 VibeEnergy uses one desktop window per session. Launching it again raises the existing window without replaying the splash. The collector remains independent.
 
+## License
+
+VibeEnergy is licensed under the GNU General Public License version 3 only (`GPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
+
 ## Install and launch
 
 Requires Python 3.10+, Qt 6 Core/QML/Multimedia and Layer Shell Qt and KDE WindowSystem and StatusNotifierItem development files, CMake, a C++17 compiler, and Plasma 6 with Kirigami and Qt Quick Controls. On Manjaro these are typically supplied by python, cmake, gcc, qt6-base, qt6-declarative, qt6-multimedia, layer-shell-qt, kwindowsystem, kstatusnotifieritem, kirigami, plasma-workspace and libplasma. NVIDIA polling additionally uses the driver-provided nvidia-smi. Powerstat is optional. No Python pip dependencies. The optional offscreen smoke-test target (`-DBUILD_TESTING=ON`) also requires KI18n development files; the installer builds without that target.
@@ -59,10 +63,10 @@ Build a transferable installer from this checkout:
 python3 builders/package_standalone.py
 ```
 
-Copy `release/vibeenergy-1.0.0-standalone.run` to the other Linux machine, then run as your regular user:
+Copy `release/vibeenergy-1.0.1-standalone.run` to the other Linux machine, then run as your regular user:
 
 ```sh
-sh vibeenergy-1.0.0-standalone.run --autostart
+sh vibeenergy-1.0.1-standalone.run --autostart
 ```
 
 This is a **source-based installer**, not a dependency-bundled executable. It builds against the target machine's Qt libraries and requires the same Plasma 6, Python, Qt development, CMake, and compiler prerequisites as installation from Git. Qt Multimedia is needed for Turbo sounds. No Git checkout or network download is needed by the installer itself. Open VibeEnergy from the application menu after installation. GPU readings require supported hardware and a readable driver power sensor; Powerstat is separate CPU setup.
@@ -130,7 +134,7 @@ To remove that optional service, stop/disable it, remove `/etc/systemd/system/vi
 
 ## Accounting, reports and retention
 
-Default sample interval: 10 seconds. Integration uses a trapezoid between consecutive valid power readings in one collector session. RAPL readings already average counter deltas over the preceding interval, so their interval energy uses a rectangle. Counter wrap uses max_energy_range_uj. Implausible power (>10 kW/package) is rejected. Very long intervals or multiple counter wraps cannot be reconstructed; they remain unmeasured.
+Default sample interval: 1 second; configurable from 1 to 5 seconds. Integration uses a trapezoid between consecutive valid power readings in one collector session. RAPL readings already average counter deltas over the preceding interval, so their interval energy uses a rectangle. Counter wrap uses max_energy_range_uj. Implausible power (>10 kW/package) is rejected. Very long intervals or multiple counter wraps cannot be reconstructed; they remain unmeasured.
 
 Monotonic time determines elapsed integration. CLOCK_BOOTTIME detects suspend; wall-time jumps, missing readings, collector restarts, reboots, intervals over 2.5 times the configured period and source changes break continuity. Startup/warm-up intervals remain unknown. No energy is extrapolated over offline periods. Valid intervals are split at local midnight, including DST; timezone changes affect future accounting, without rewriting historical day labels. Tiny scheduling differences between wall and monotonic timestamps are tolerated (one second).
 

@@ -74,10 +74,12 @@ class Nvidia:
                     self.error = output.decode(errors='replace').strip()[:400]
             except OSError:
                 pass
-        if self.process and (self.process.poll() is not None or self.interval != interval or
-                             now-max([t for _, _, t in self.values.values()] or [self.started]) > max(30, interval*3)):
+        failed = self.process is not None and (self.process.poll() is not None or
+            now-max([t for _, _, t in self.values.values()] or [self.started]) > max(30, interval*3))
+        if self.process and (failed or self.interval != interval):
             self.close()
-            self.retry = now+30
+            # A settings change is a deliberate restart, not a driver failure.
+            self.retry = now+30 if failed else now
         if self.process is None and now >= self.retry:
             binary = nvidia_smi_binary()
             self.retry = now+60

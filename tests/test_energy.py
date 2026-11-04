@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 from energytlk.energy import Integrator, counter_delta, day_slices
-from energytlk.config import validate
+from energytlk.config import load, validate
 from energytlk.database import Database
 from energytlk.powerstat import PowerstatLog
 from energytlk.sensors import Sensors, reading
@@ -130,6 +130,25 @@ class DatabaseTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
+    def test_interval_limits(self):
+        for interval in (1, 5):
+            self.assertEqual(validate({'interval':interval})['interval'],interval)
+        for interval in (0, 6, 300):
+            with self.subTest(interval=interval), self.assertRaises(ValueError):
+                validate({'interval':interval})
+
+    def test_old_saved_intervals_load_at_five_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp)/'energytlk/config.json'
+            config.parent.mkdir()
+            with patch.dict(os.environ, {'XDG_CONFIG_HOME':tmp}):
+                for interval in (6, 10, 300):
+                    config.write_text('{"interval":%d}' % interval)
+                    self.assertEqual(load()['interval'],5)
+                config.write_text('{"interval":301}')
+                with self.assertRaises(ValueError):
+                    load()
+
     def test_comma_and_currency(self):
         self.assertEqual(validate({'price':'0,177','currency':'eur'})['price'],.177)
 

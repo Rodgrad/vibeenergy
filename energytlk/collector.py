@@ -68,7 +68,7 @@ def main():
             except (OSError, ValueError, TypeError) as exc:
                 error = 'Settings rejected; using last valid settings: '+str(exc)
             if args.interval:
-                config['interval'] = max(1, min(300, args.interval))
+                config['interval'] = max(1, min(5, args.interval))
             interval = config['interval']
             wall, mono = time.time(), time.monotonic()
             boot = time.clock_gettime(time.CLOCK_BOOTTIME)

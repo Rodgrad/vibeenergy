@@ -569,13 +569,31 @@ PlasmoidItem {
             }
             Controls.ScrollView {
                 id: settingsScroll
+                property string autostartState: "unknown"
+                property string autostartNotice: ""
+                property bool autostartSuccess: false
+                property string saveNotice: ""
+                property bool saveSuccess: false
+                Connections {
+                    target: bridge
+                    function onServiceFinished(action, success, message) {
+                        if(action!=="enable" && action!=="disable")return
+                        settingsScroll.autostartState=bridge.autostartState()
+                        settingsScroll.autostartSuccess=success
+                        settingsScroll.autostartNotice=message
+                    }
+                    function onSettingsSaveFinished(success, message) {
+                        settingsScroll.saveSuccess=success
+                        settingsScroll.saveNotice=message
+                    }
+                }
                 function reloadSavedSettings() {
+                    autostartState = bridge.autostartState()
                     const saved = bridge.savedSettings()
                     price.text = String(saved.price)
                     curr.currentIndex = curr.model.indexOf(saved.currency)
                     curr.editText = saved.currency
-                    interval.value = saved.interval
-                    interval.contentItem.text = interval.textFromValue(interval.value, interval.locale)
+                    interval.resetValue(saved.interval)
                     logPath.text = saved.powerstat_log
                     currencyChangePopup.previousCurrency = saved.currency
                 }
@@ -615,7 +633,7 @@ PlasmoidItem {
                                 ColumnLayout {
                                     Layout.fillWidth: true; Layout.preferredWidth: 1; Layout.alignment: Qt.AlignTop; spacing: 6
                                     Controls.Label { color: "#f0f3f6"; text: i18n("Sampling interval (s)") }
-                                    DarkSpinBox { id: interval; Layout.fillWidth: true; from: 1; to: 300; editable: true; value: root.snapshot.config ? root.snapshot.config.interval : 1; Accessible.name: i18n("Sampling interval in seconds") }
+                                    DarkSpinBox { id: interval; Layout.fillWidth: true; from: 1; to: 5; editable: true; value: root.snapshot.config ? root.snapshot.config.interval : 1; Accessible.name: i18n("Sampling interval in seconds, from 1 to 5") }
                                 }
                             }
                             Controls.Label {
@@ -633,6 +651,13 @@ PlasmoidItem {
                             Controls.Label { color: "#f0f3f6"; text: i18n("Custom CPU log (optional)"); Layout.topMargin: 6 }
                             FormField { id: logPath; Layout.fillWidth: true; text: root.snapshot.config ? root.snapshot.config.powerstat_log : ""; placeholderText: i18n("Auto-detect logs in ~/.vibeenergy/logs/"); Accessible.name: i18n("Optional Powerstat log path") }
                             ActionButton { text: i18n("Save changes"); primary: true; onClicked: currencyChangePopup.requestSave(price.text,curr.editText,interval.value,logPath.text) }
+                            Controls.Label {
+                                objectName: "settingsSaveNotice"
+                                Layout.fillWidth: true; wrapMode: Text.Wrap
+                                visible: settingsScroll.saveNotice.length>0
+                                color: settingsScroll.saveSuccess ? "#70dba1" : "#ff9b92"
+                                text: (settingsScroll.saveSuccess ? "✓ " : "") + settingsScroll.saveNotice
+                            }
                         }
                     }
                     Surface {
@@ -696,8 +721,30 @@ PlasmoidItem {
                             Controls.Label { color: "#f0f3f6"; Layout.fillWidth: true; wrapMode: Text.Wrap; text: i18n("Recording starts automatically when you open VibeEnergy and continues in the background. Closing the window keeps the app in the system tray; click its icon to reopen. Use Quit VibeEnergy from the tray to stop recording and exit. Enable autostart to start recording when you log in. Disabling autostart keeps the current recording running."); opacity: .65 }
                             Flow {
                                 Layout.fillWidth: true; spacing: 8
-                                ActionButton { text: i18n("Enable autostart"); onClicked: bridge.service("enable") }
-                                ActionButton { text: i18n("Disable autostart"); onClicked: bridge.service("disable") }
+                                ActionButton {
+                                    objectName: "enableAutostartButton"
+                                    text: i18n("Enable autostart"); active: settingsScroll.autostartState==="enabled"
+                                    enabled: !bridge.serviceBusy
+                                    onClicked: { settingsScroll.autostartNotice=""; bridge.service("enable") }
+                                }
+                                ActionButton {
+                                    objectName: "disableAutostartButton"
+                                    text: i18n("Disable autostart"); active: settingsScroll.autostartState==="disabled"
+                                    enabled: !bridge.serviceBusy
+                                    onClicked: { settingsScroll.autostartNotice=""; bridge.service("disable") }
+                                }
+                            }
+                            Controls.Label {
+                                objectName: "autostartStateLabel"
+                                Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#43b8ff"
+                                text: bridge.serviceBusy ? i18n("Processing…") : settingsScroll.autostartState==="enabled" ? i18n("Autostart enabled") : settingsScroll.autostartState==="disabled" ? i18n("Autostart disabled") : i18n("Could not determine autostart state")
+                            }
+                            Controls.Label {
+                                objectName: "autostartNotice"
+                                Layout.fillWidth: true; wrapMode: Text.Wrap
+                                visible: settingsScroll.autostartNotice.length>0
+                                color: settingsScroll.autostartSuccess ? "#70dba1" : "#ff9b92"
+                                text: (settingsScroll.autostartSuccess ? "✓ " : "") + settingsScroll.autostartNotice
                             }
                             Rectangle { Layout.fillWidth: true; height: 1; color: Qt.rgba(Kirigami.Theme.textColor.r,Kirigami.Theme.textColor.g,Kirigami.Theme.textColor.b,.1) }
                             Controls.Label { color: "#f0f3f6"; text: i18n("CPU Powerstat recording"); font.weight: Font.DemiBold }
@@ -856,7 +903,7 @@ PlasmoidItem {
                         background: Rectangle { radius: 8; color: parent.down ? "#bc4010" : parent.hovered ? "#d34d16" : "#e4571d"; border.width: parent.activeFocus ? 2 : 1; border.color: "#ff9b6c" }
                         onClicked: Qt.openUrlExternally("https://ko-fi.com/techtoapes")
                     }
-                    Controls.Label { color: "#f0f3f6"; text: "vibeenergy · 1.0.0"; opacity: .65; font.pointSize: 9 }
+                    Controls.Label { color: "#f0f3f6"; text: "vibeenergy · 1.0.1"; opacity: .65; font.pointSize: 9 }
                     ActionButton { text: i18n("Close"); Layout.alignment: Qt.AlignRight; onClicked: creditsPopup.close() }
                 }
             }

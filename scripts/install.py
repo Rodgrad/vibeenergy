@@ -36,6 +36,8 @@ def main():
     shutil.rmtree(lib/'powerstat-setup', ignore_errors=True)
     shutil.copy2(ROOT/'scripts/uninstall.py', lib/'uninstall.py')
     shutil.copy2(ROOT/'build/energytlk-instance', lib/'energytlk-instance')
+    shutil.copy2(ROOT/'LICENSE', lib/'LICENSE')
+    shutil.copy2(ROOT/'LICENSE', package/'LICENSE')
     shutil.copy2(ROOT/'README.md', lib/'README.md')
     shutil.copy2(ROOT/'VALIDATION.md', lib/'VALIDATION.md')
     service.parent.mkdir(parents=True, exist_ok=True)

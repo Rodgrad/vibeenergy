@@ -14,11 +14,18 @@ ColumnLayout {
     property real maximum: Math.max(10,...visiblePoints.map(p => Math.max(p.cpu || 0,p.gpu || 0)))
     property real ceiling: Math.ceil(maximum*1.15/10)*10
     property real start: now-rangeSeconds
-    onEnergyChanged: plot.requestPaint()
-    onPointsChanged: plot.requestPaint()
-    onRangeSecondsChanged: plot.requestPaint()
+    readonly property bool glowEnabled: energy > .001
+    onGlowEnabledChanged: plot.requestPaint()
+    onVisiblePointsChanged: plot.requestPaint()
+    onCeilingChanged: plot.requestPaint()
+    onStartChanged: plot.requestPaint()
+    onMaxGapSecondsChanged: plot.requestPaint()
     Canvas {
         id: plot
+        // Rasterize away from the UI thread; animate the cached texture instead
+        // of repainting all text and blurred paths on every Turbo frame.
+        renderStrategy: Canvas.Threaded
+        opacity: .85 + Math.min(1, Math.max(0, graph.energy)) * .15
         Layout.fillWidth: true; Layout.preferredHeight: 208
         Accessible.role: Accessible.Chart
         Accessible.name: qsTr("Live CPU and GPU power in watts. Only observed samples are shown.")
@@ -49,7 +56,7 @@ ColumnLayout {
                     if(!group.length)return
                     c.beginPath()
                     group.forEach((p,i)=> {const x=l+(p.timestamp-graph.start)/span*w,y=t+h-p[kind]/graph.ceiling*h;i?c.lineTo(x,y):c.moveTo(x,y)})
-                    c.strokeStyle=color;c.lineWidth=2.5;c.shadowColor=color;c.shadowBlur=graph.energy*8;c.stroke();c.shadowBlur=0
+                    c.strokeStyle=color;c.lineWidth=2.5;c.shadowColor=color;c.shadowBlur=graph.glowEnabled?8:0;c.stroke();c.shadowBlur=0
                     if(kind==="gpu" && group.length>1) {
                         c.lineTo(l+(group[group.length-1].timestamp-graph.start)/span*w,t+h)
                         c.lineTo(l+(group[0].timestamp-graph.start)/span*w,t+h);c.closePath()

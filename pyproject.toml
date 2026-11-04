@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "energytlk"
-version = "1.0.0"
+version = "1.0.1"
 description = "Unprivileged local CPU/GPU energy monitoring for Plasma 6"
 requires-python = ">=3.10"
+license = {file = "LICENSE"}
 
 [project.scripts]
 energytlk-collector = "energytlk.collector:main"

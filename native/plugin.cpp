@@ -239,6 +239,7 @@ public slots:
 class EnergyBridge : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap state READ state NOTIFY changed)
+    Q_PROPERTY(bool serviceBusy READ serviceBusy NOTIFY changed)
     Q_PROPERTY(bool clearingHistory READ clearingHistory NOTIFY clearingHistoryChanged)
     Q_PROPERTY(QString message READ message NOTIFY changed)
     Q_PROPERTY(bool demo READ demo WRITE setDemo NOTIFY changed)
@@ -632,41 +633,57 @@ public:
         if (document.isObject()) m_state = document.object().toVariantMap();
         emit changed();
     }
+    bool serviceBusy() const { return m_serviceBusy; }
+    Q_INVOKABLE QString autostartState() const {
+        const QString path=QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)+"/autostart/vibeenergy.desktop";
+        if(!QFileInfo::exists(path))return QStringLiteral("disabled");
+        QFile file(path);
+        if(!file.open(QIODevice::ReadOnly))return QStringLiteral("unknown");
+        QSettings entry(path,QSettings::IniFormat);
+        entry.beginGroup("Desktop Entry");
+        if(entry.value("Type").toString()!="Application" || entry.value("Exec").toString().isEmpty())return QStringLiteral("unknown");
+        return entry.value("Hidden",false).toBool() || !entry.value("X-GNOME-Autostart-enabled",true).toBool() ? QStringLiteral("disabled") : QStringLiteral("enabled");
+    }
     Q_INVOKABLE void service(const QString &action) {
         const QStringList allowed={"start", "stop", "restart", "enable", "disable"};
         if (!allowed.contains(action) || m_serviceBusy) return;
+        const auto finish=[this,action](bool success) {
+            m_serviceBusy=false;emit changed();emit serviceFinished(action,success,m_message);
+        };
         if(action=="enable" || action=="disable") {
             const QString directory=QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)+"/autostart";
             const QString target=directory+"/vibeenergy.desktop";
             if(action=="enable") {
                 QFile desktop(QStandardPaths::locate(QStandardPaths::ApplicationsLocation,QStringLiteral("vibeenergy.desktop")));
                 if(!desktop.open(QIODevice::ReadOnly)) {
-                    m_message=tr("Cannot find VibeEnergy's installed application entry. Open the installed app before enabling autostart.");emit changed();return;
+                    m_message=tr("Cannot find VibeEnergy's installed application entry. Open the installed app before enabling autostart.");finish(false);return;
                 }
                 const QByteArray contents=desktop.readAll();
-                if(!QDir().mkpath(directory)) {m_message=tr("Cannot create the Startup Apps directory.");emit changed();return;}
+                if(!QDir().mkpath(directory)) {m_message=tr("Cannot create the Startup Apps directory.");finish(false);return;}
                 QSaveFile file(target);
                 if(!file.open(QIODevice::WriteOnly) || file.write(contents)!=contents.size() || !file.commit()) {
-                    m_message=tr("Could not save the Startup Apps entry: ")+file.errorString();emit changed();return;
+                    m_message=tr("Could not save the Startup Apps entry: ")+file.errorString();finish(false);return;
                 }
             } else if(QFile::exists(target) && !QFile::remove(target)) {
-                m_message=tr("Could not remove VibeEnergy from Startup Apps.");emit changed();return;
+                m_message=tr("Could not remove VibeEnergy from Startup Apps.");finish(false);return;
             }
         }
         auto *process=new QProcess(this);
-        m_serviceBusy=true;
+        m_serviceBusy=true;emit changed();
         QStringList args={"--user", action};
         if (action=="enable") args << "--now";
         args << "energytlk.service";
-        connect(process, &QProcess::errorOccurred, this, [this,process](QProcess::ProcessError){
-            m_message=process->errorString(); m_serviceBusy=false; emit changed(); process->deleteLater();
+        connect(process, &QProcess::errorOccurred, this, [this,process,finish](QProcess::ProcessError error){
+            if(error!=QProcess::FailedToStart)return;
+            m_message=process->errorString(); finish(false); process->deleteLater();
         });
-        connect(process, &QProcess::finished, this, [this,process,action](int code, QProcess::ExitStatus){
+        connect(process, &QProcess::finished, this, [this,process,action,finish](int code, QProcess::ExitStatus status){
+            const bool success=code==0 && status==QProcess::NormalExit;
             if(action=="enable" || action=="disable") {
                 m_message=action=="enable" ? tr("VibeEnergy added to Startup Apps.") : tr("VibeEnergy removed from Startup Apps. Current recording continues.");
-                if(code!=0)m_message+=tr(" Collector service update failed: ")+QString::fromUtf8(process->readAllStandardError());
-            } else m_message=code==0 ? tr("Collector setting updated") : QString::fromUtf8(process->readAllStandardError());
-            m_serviceBusy=false; emit changed(); process->deleteLater();
+                if(!success)m_message+=tr(" Collector service update failed: ")+QString::fromUtf8(process->readAllStandardError());
+            } else m_message=success ? tr("Collector setting updated") : QString::fromUtf8(process->readAllStandardError());
+            finish(success); process->deleteLater();
         });
         QTimer::singleShot(10000, process, [process]{ if(process->state()!=QProcess::NotRunning) process->kill(); });
         process->start("systemctl", args);
@@ -751,19 +768,23 @@ public:
             const auto saved=QJsonDocument::fromJson(file.readAll()).object().toVariantMap();
             for(auto it=saved.cbegin();it!=saved.cend();++it) settings.insert(it.key(),it.value());
         }
+        settings.insert("interval",qBound(1,settings.value("interval").toInt(),5));
         return settings;
     }
     Q_INVOKABLE bool saveSettings(QString priceText, QString currency, int interval, int retention, QString log) {
+        const auto finish=[this](bool success) {
+            emit changed();emit settingsSaveFinished(success,m_message);return success;
+        };
         bool ok=false;
         double price=priceText.replace(',', '.').toDouble(&ok);
         currency=currency.trimmed().toUpper();
         bool currencyValid=currency.size()==3;
         for(const auto c:currency) currencyValid=currencyValid && c>='A' && c<='Z';
-        if(!ok || !std::isfinite(price) || price<0 || price>10000 || interval<1 || interval>300 || retention<1 || retention>36500 || !currencyValid || (!log.isEmpty() && !QDir::isAbsolutePath(log))) {
-            m_message=tr("Check price, currency, interval, retention, and absolute log path."); emit changed(); return false;
+        if(!ok || !std::isfinite(price) || price<0 || price>10000 || interval<1 || interval>5 || retention<1 || retention>36500 || !currencyValid || (!log.isEmpty() && !QDir::isAbsolutePath(log))) {
+            m_message=tr("Check price, currency, interval, retention, and absolute log path."); return finish(false);
         }
         const QString dir=QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)+"/energytlk";
-        if(!QDir().mkpath(dir)) { m_message=tr("Cannot create settings directory"); emit changed(); return false; }
+        if(!QDir().mkpath(dir)) { m_message=tr("Cannot create settings directory"); return finish(false); }
         // Remember the original unit even if settings change while collection is stopped.
         QFile previousFile(dir+"/config.json");
         QJsonObject previous;
@@ -772,17 +793,19 @@ public:
         QJsonArray histories=previous.value("history_currencies").toArray();
         for(const QString &code:{oldCurrency,currency}) if(!histories.contains(code)) histories.append(code);
         QSaveFile file(dir+"/config.json");
-        if(!file.open(QIODevice::WriteOnly)) { m_message=file.errorString(); emit changed(); return false; }
+        if(!file.open(QIODevice::WriteOnly)) { m_message=file.errorString(); return finish(false); }
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         QJsonObject settings{{"price",price},{"currency",currency},{"interval",interval},{"retention_days",retention},{"powerstat_log",log}};
         settings.insert("history_currency",previous.value("history_currency").toString(oldCurrency));
         settings.insert("history_price",previous.value("history_price").toDouble(previous.value("price").toDouble(.177)));
         settings.insert("history_currencies",histories);
         const auto payload=QJsonDocument(settings).toJson();
-        if(file.write(payload)!=payload.size() || !file.commit()) { m_message=file.errorString(); emit changed(); return false; }
-        m_message=tr("Saved; collector applies changes at its next sample."); emit changed(); return true;
+        if(file.write(payload)!=payload.size() || !file.commit()) { m_message=file.errorString(); return finish(false); }
+        m_message=tr("Saved; collector applies changes at its next sample."); return finish(true);
     }
 signals:
+    void settingsSaveFinished(bool success,QString message);
+    void serviceFinished(QString action,bool success,QString message);
     void clearLogsFinished(bool success,QString message);
     void clearingHistoryChanged();
     void startupCompleteChanged();

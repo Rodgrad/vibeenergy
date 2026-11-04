@@ -4,6 +4,10 @@ import QtQuick.Controls as Controls
 
 Controls.SpinBox {
     id: control
+    function resetValue(savedValue) {
+        value = savedValue
+        contentItem.text = Qt.binding(function() { return control.displayText })
+    }
     implicitHeight: 40
     leftPadding: 12; rightPadding: 30
     palette.base: "#202730"; palette.text: "#f0f3f6"

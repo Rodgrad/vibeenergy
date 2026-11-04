@@ -19,8 +19,8 @@ def validate(data):
     if not math.isfinite(result['price']) or not 0 <= result['price'] <= 10000:
         raise ValueError('Price must be between 0 and 10000 per kWh')
     result['interval'] = int(result['interval'])
-    if not 1 <= result['interval'] <= 300:
-        raise ValueError('Interval must be 1–300 seconds')
+    if not 1 <= result['interval'] <= 5:
+        raise ValueError('Interval must be 1–5 seconds')
     result['retention_days'] = int(result['retention_days'])
     if not 1 <= result['retention_days'] <= 36500:
         raise ValueError('Retention must be 1–36500 days')
@@ -37,7 +37,11 @@ def validate(data):
 
 def load():
     path = paths()[0]/'config.json'
-    return validate(json.loads(path.read_text()) if path.exists() else {})
+    data = json.loads(path.read_text()) if path.exists() else {}
+    # Accept settings saved before the maximum was reduced to five seconds.
+    if 5 < int(data.get('interval', DEFAULTS['interval'])) <= 300:
+        data['interval'] = 5
+    return validate(data)
 
 
 def atomic_json(path, data):

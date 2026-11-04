@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EnergyTLK VERSION 1.0.0 LANGUAGES CXX)
+project(EnergyTLK VERSION 1.0.1 LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Qml Gui Quick Multimedia DBus)
